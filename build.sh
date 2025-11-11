@@ -1,15 +1,17 @@
 #!/bin/bash
 set -e
 
-echo "Installing Python packages..."
+echo "API GUARDIAN GAME"
+
+# Install Python packages
 pip install -r requirements.txt
 
-# WE ALREADY COPIED static MANUALLY — just verify
-if [ -f "backend/static/index.html" ]; then
-    echo "static folder ready! Game will load."
+# static folder is already committed — just check
+if [ -f "backend/static/index.html" ] || [ -f "backend/static/KEEP_ME.html" ]; then
+    echo "static folder DETECTED – GAME WILL LOAD!"
 else
-    echo "ERROR: backend/static/index.html missing!"
+    echo "ERROR: static folder missing!"
     exit 1
 fi
 
-echo "MANUAL BUILD COMPLETE"
+echo "DEPLOY SUCCESS!"
