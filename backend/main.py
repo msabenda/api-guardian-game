@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 # Import our new anomaly logic
-from anomaly import is_anomaly, get_threat_description
+from . import is_anomaly, get_threat_description
 
 app = FastAPI()
 
