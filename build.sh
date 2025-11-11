@@ -1,30 +1,15 @@
 #!/bin/bash
 set -e
 
-echo "=== API GUARDIAN: STAR BUILD ==="
-
-# Install Python deps
+echo "Installing Python packages..."
 pip install -r requirements.txt
 
-# Build React frontend
-echo "Building React app..."
-cd frontend
-npm install
-npm run build
-cd ..
-
-# CREATE & COPY static files
-echo "Copying frontend to backend/static..."
-rm -rf backend/static
-mkdir -p backend/static
-cp -r frontend/dist/* backend/static/
-
-# Verify it worked
+# WE ALREADY COPIED static MANUALLY — just verify
 if [ -f "backend/static/index.html" ]; then
-    echo "SUCCESS: static/index.html found!"
+    echo "static folder ready! Game will load."
 else
-    echo "ERROR: index.html NOT copied!"
+    echo "ERROR: backend/static/index.html missing!"
     exit 1
 fi
 
-echo "BUILD COMPLETE – READY FOR TANZANIA!"
+echo "MANUAL BUILD COMPLETE – TANZANIA READY!"
