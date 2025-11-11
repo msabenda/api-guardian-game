@@ -12,4 +12,4 @@ else
     exit 1
 fi
 
-echo "MANUAL BUILD COMPLETE – TANZANIA READY!"
+echo "MANUAL BUILD COMPLETE"
