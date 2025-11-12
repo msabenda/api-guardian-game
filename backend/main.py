@@ -27,7 +27,8 @@ app.add_middleware(
 #     app.mount("/", StaticFiles(directory="../frontend/dist", html=True), name="static")
 
 # Serve built React app
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/", StaticFiles(directory="backend/static", html=True), name="static")
 
 
 # === INDUSTRIES WITH REALISTIC RPM RANGES ===
