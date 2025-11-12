@@ -4,16 +4,17 @@ import json
 import random
 import os
 from datetime import datetime
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-# Import our new anomaly logic
+# Import your anomaly logic
 from . import is_anomaly, get_threat_description
 
 app = FastAPI()
 
-# Allow frontend to connect
+# === CORS ===
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,16 +23,34 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Serve Vite build
-# if os.path.exists("../frontend/dist"):
-#     app.mount("/", StaticFiles(directory="../frontend/dist", html=True), name="static")
+# === SERVE FRONTEND (FIXED FOR RENDER - NO STATICFILES MOUNT ON ROOT!) ===
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
 
-# Serve built React app
-# app.mount("/", StaticFiles(directory="static", html=True), name="static")
-app.mount("/", StaticFiles(directory="backend/static", html=True), name="static")
+# Serve index.html
+@app.get("/", response_class=HTMLResponse)
+async def serve_spa():
+    index_path = os.path.join(FRONTEND_DIR, "index.html")
+    if os.path.exists(index_path):
+        return HTMLResponse(open(index_path, "r", encoding="utf-8").read())
+    return HTMLResponse("<h1>API Guardian: Building... Please wait</h1>", status_code=200)
 
+# Serve static assets (JS, CSS, sounds)
+@app.get("/{filepath:path}")
+async def serve_static(filepath: str):
+    if filepath.startswith("api") or filepath in ["ws", "action", "health"]:
+        return {"error": "not found"}, 404
+    
+    file_path = os.path.join(FRONTEND_DIR, filepath)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    
+    # Fallback to index.html for SPA routing
+    index_path = os.path.join(FRONTEND_DIR, "index.html")
+    if os.path.exists(index_path):
+        return HTMLResponse(open(index_path, "r", encoding="utf-8").read())
+    return HTMLResponse("Not Found", status_code=404)
 
-# === INDUSTRIES WITH REALISTIC RPM RANGES ===
+# === YOUR INDUSTRIES & ATTACKS (UNCHANGED) ===
 INDUSTRIES = {
     "Financial Services": { "paths": ["/v1/accounts/{}/balance", "/v1/auth/login"], "normal_ips": ["192.168.1.100"], "normal_rpm": (20, 120) },
     "E-commerce & Retail": { "paths": ["/api/v2/cart/add", "/api/v2/products/{}"], "normal_ips": ["203.0.113.45"], "normal_rpm": (30, 300) },
@@ -47,7 +66,6 @@ INDUSTRIES = {
     "Internal Operations": { "paths": ["/api/v1/employees/directory"], "normal_ips": ["10.0.0.25"], "normal_rpm": (5, 40) }
 }
 
-# === REAL ATTACK PATTERNS (HIGH RPM, EVIL IPS, BOT AGENTS) ===
 ATTACK_PATTERNS = [
     {"type": "SQL_INJECTION", "paths": ["/v1/users/999999/inject", "/v1/users/union select 1"], "ip": "185.23.45.67", "user_agent": "BotNet/2.1", "rpm_range": (600, 1800)},
     {"type": "DDOS", "paths": ["/api/v2/cart/add", "/api/v3/feed"], "ip": "203.0.113.45", "user_agent": "Python-urllib/3.9", "rpm_range": (1800, 5000)},
@@ -65,13 +83,10 @@ NORMAL_USER_AGENTS = [
 ws_clients = []
 action_clients = []
 processed_logs = set()
-current_idx = 0
 
-
+# === LOG GENERATOR (UNCHANGED) ===
 async def generate_log():
-    """Generate one realistic log entry"""
-    is_attack = random.random() < 0.15  # 15% chance of attack
-
+    is_attack = random.random() < 0.15
     if is_attack:
         attack = random.choice(ATTACK_PATTERNS)
         path_template = random.choice(attack["paths"])
@@ -82,7 +97,7 @@ async def generate_log():
             "path": path,
             "ip": attack["ip"],
             "user_agent": attack["user_agent"],
-            "freq": rpm,  # ← This is what frontend shows as "RPM"
+            "freq": rpm,
             "sector": "attack"
         }
     else:
@@ -100,18 +115,15 @@ async def generate_log():
             "sector": sector
         }
 
-    log_id = abs(hash(str(datetime.now().timestamp()) + path + str(rpm)))  # Stable ID
+    log_id = abs(hash(str(datetime.now().timestamp()) + path + str(rpm)))
     return {"id": log_id, "log": log_data}
 
-
+# === SEND LOG ===
 async def send_next_log():
-    """Generate log → run anomaly → send to all clients"""
-    await asyncio.sleep(random.uniform(0.8, 2.2))  # Realistic timing
-
+    await asyncio.sleep(random.uniform(0.8, 2.2))
     log_entry = await generate_log()
     log_data = log_entry["log"]
 
-    # FIXED: Now correctly unpacks 3 values from is_anomaly()
     is_bad, score, description = is_anomaly(log_data)
 
     payload = {
@@ -119,64 +131,54 @@ async def send_next_log():
         "log": log_data,
         "anomaly": is_bad,
         "score": round(float(score), 3),
-        "threat": description  # ← Now sent to frontend!
+        "threat": description
     }
 
     payload_json = json.dumps(payload)
-
-    # Send to all /ws clients
     for client in ws_clients[:]:
         try:
             await client.send_text(payload_json)
         except:
             ws_clients.remove(client)
 
-
+# === WEBSOCKETS ===
 @app.websocket("/ws")
 async def ws_logs(websocket: WebSocket):
     await websocket.accept()
     ws_clients.append(websocket)
-    await send_next_log()  # Send first log immediately
-
+    await send_next_log()
     try:
         async for _ in websocket.iter_text():
-            pass  # Keep connection alive
+            pass
     except WebSocketDisconnect:
         ws_clients.remove(websocket)
-
 
 @app.websocket("/action")
 async def ws_action(websocket: WebSocket):
     await websocket.accept()
     action_clients.append(websocket)
-
     try:
         async for message in websocket.iter_text():
             data = json.loads(message)
             log_id = data["id"]
-            user_action = data["action"]  # "attack" or "false"
-            real_anomaly = data["real_anomaly"]  # True/False from backend
+            user_action = data["action"]
+            real_anomaly = data["real_anomaly"]
 
             if log_id in processed_logs:
                 continue
             processed_logs.add(log_id)
 
-            # CORRECT LOGIC: BLOCK IT = attack, PASS IT = false
             is_correct = (user_action == "attack") == real_anomaly
             points = 100 if is_correct else -50
 
             await websocket.send_text(json.dumps({"points": points}))
-
-            # Send next log after action
             asyncio.create_task(send_next_log())
-
     except WebSocketDisconnect:
         action_clients.remove(websocket)
     except Exception as e:
         print(f"Action WS error: {e}")
 
-
-# Optional: Health check
+# === HEALTH ===
 @app.get("/health")
 async def health():
     return {"status": "API Guardian is LIVE", "tanzania": "PROUD"}

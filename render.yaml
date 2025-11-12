@@ -4,7 +4,9 @@ services:
     env: python
     region: singapore
     plan: free
-    buildCommand: ./build.sh
+    buildCommand: |
+      pip install fastapi uvicorn[standard] gunicorn
+      cd frontend && npm install && npm run build
     startCommand: gunicorn backend.main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     envVars:
       PYTHON_VERSION: 3.11.6
