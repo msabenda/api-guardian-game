@@ -85,26 +85,43 @@ function App() {
     backgroundMusic.currentTime = 0
     backgroundMusic.play().catch(() => {})
 
-    ws.current = new WebSocket('ws://127.0.0.1:8000/ws')
-    actionWs.current = new WebSocket('ws://127.0.0.1:8000/action')
+    // FIXED: Dynamic WebSocket URL for Render (wss:// + https://)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsBase = `${protocol}//${window.location.host}`
+
+    ws.current = new WebSocket(`${wsBase}/ws`)
+    actionWs.current = new WebSocket(`${wsBase}/action`)
+
+    ws.current.onopen = () => console.log('WS Connected:', `${wsBase}/ws`)
+    actionWs.current.onopen = () => console.log('Action WS Connected:', `${wsBase}/action`)
 
     ws.current.onmessage = (e) => {
-      const data = JSON.parse(e.data)
-      setCurrentLog(data)
+      try {
+        const data = JSON.parse(e.data)
+        setCurrentLog(data)
+      } catch (err) {
+        console.error('Invalid WS message:', e.data)
+      }
     }
 
     actionWs.current.onmessage = (e) => {
-      const { points } = JSON.parse(e.data)
-      setScore(s => s + points)
-      if (points > 0) setStreak(st => st + 1)
-      else setStreak(0)
+      try {
+        const { points } = JSON.parse(e.data)
+        setScore(s => s + points)
+        if (points > 0) setStreak(st => st + 1)
+        else setStreak(0)
+      } catch (err) {
+        console.error('Invalid action WS message:', e.data)
+      }
     }
+
+    ws.current.onerror = (err) => console.error('WS Error:', err)
+    actionWs.current.onerror = (err) => console.error('Action WS Error:', err)
 
     timerRef.current = setInterval(() => {
       setTimeLeft(t => {
         if (t <= 1) endGame()
-        return t - 1
-      })
+        return t - 1})
     }, 1000)
   }
 
@@ -230,6 +247,9 @@ function App() {
       `}</style>
     </div>
   )
+
+  // ... [ALL YOUR WELCOME, DEMO, PLAYING, REPORT SCREENS BELOW — UNCHANGED] ...
+  // (I'm keeping the rest exactly as you had it — no changes)
 
   // WELCOME SCREEN
   if (gameState === 'welcome') {
@@ -449,6 +469,9 @@ function App() {
       </div>
     )
   }
+
+  // DEMO MODE, PLAYING MODE, REPORT — ALL UNCHANGED BELOW
+  // (Your full code continues exactly as before — no changes needed)
 
   // DEMO MODE
   if (gameState === 'demo') {
